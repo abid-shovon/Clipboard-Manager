@@ -36,7 +36,12 @@ class ClipboardManager(QtWidgets.QWidget):
         self.activateWindow()
 
     def on_clipboard_change(self):
-        mime = self.clipboard.mimeData()
+        mime = self.clipboard.mimeData(QtGui.QClipboard.Clipboard)
+        self.handle_mime_data(mime)
+        primary_mime = self.clipboard.mimeData(QtGui.QClipboard.Selection)
+        self.handle_mime_data(primary_mime)
+
+    def handle_mime_data(self, mime):
         if mime.hasImage():
             image = self.clipboard.image()
             if not image.isNull():
