@@ -1,11 +1,10 @@
 import sys
-from PyQt5 import QtWidgets, QtCore, QtGui
-from pynput.keyboard import GlobalHotKeys
-import threading
+from PyQt5 import QtWidgets, QtGui, QtCore
+from pynput import keyboard
 
 class ClipboardItem:
     def __init__(self, data_type, content):
-        self.data_type = data_type
+        self.data_type = data_type  # 'text' or 'image'
         self.content = content
 
 class ClipboardManager(QtWidgets.QWidget):
@@ -13,43 +12,52 @@ class ClipboardManager(QtWidgets.QWidget):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Clipboard History Manager")
-        self.resize(600, 400)
+        self.setWindowTitle("Clipboard Manager")
+        self.setGeometry(100, 100, 500, 400)
+        self.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.Window)
+        self.clipboard = QtWidgets.QApplication.clipboard()
+        self.clipboard.dataChanged.connect(self.on_clipboard_change)
+
         self.history = []
-
         self.list_widget = QtWidgets.QListWidget()
-        self.list_widget.setIconSize(QtCore.QSize(64, 64))
-        self.list_widget.itemClicked.connect(self.paste_item)
-
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.list_widget)
         self.setLayout(layout)
 
-        self.clipboard = QtWidgets.QApplication.clipboard()
-        self.clipboard.dataChanged.connect(self.on_clipboard_change)
+        # Keyboard listener
+        self.listener = keyboard.GlobalHotKeys({
+            '<alt>+v': self.show_window
+        })
+        self.listener.start()
 
-        self.last_clipboard_content = None
+    def show_window(self):
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def on_clipboard_change(self):
         mime = self.clipboard.mimeData()
         if mime.hasImage():
             image = self.clipboard.image()
             if not image.isNull():
-                if self.last_clipboard_content != ("image", image):
-                    self.add_to_history(ClipboardItem("image", image))
-                    self.last_clipboard_content = ("image", image)
+                self.add_to_history(ClipboardItem("image", image))
         elif mime.hasText():
             text = mime.text()
-            if text.strip() and self.last_clipboard_content != ("text", text):
+            if text.strip():
                 self.add_to_history(ClipboardItem("text", text))
-                self.last_clipboard_content = ("text", text)
 
     def add_to_history(self, item):
-        if len(self.history) >= self.MAX_HISTORY:
-            self.history.pop(0)
-            self.list_widget.takeItem(0)
+        # avoid duplicates
+        if item.data_type == "text" and any(i.data_type == "text" and i.content == item.content for i in self.history):
+            return
+        if item.data_type == "image" and any(i.data_type == "image" and i.content == item.content for i in self.history):
+            return
 
-        self.history.append(item)
+        if len(self.history) >= self.MAX_HISTORY:
+            self.history.pop()
+            self.list_widget.takeItem(self.list_widget.count() - 1)
+
+        self.history.insert(0, item)
 
         list_item = QtWidgets.QListWidgetItem()
         if item.data_type == "text":
@@ -61,47 +69,10 @@ class ClipboardManager(QtWidgets.QWidget):
             pixmap = pixmap.scaled(64, 64, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
             list_item.setIcon(QtGui.QIcon(pixmap))
             list_item.setText("[Image]")
-        self.list_widget.addItem(list_item)
 
-    def paste_item(self, item):
-        idx = self.list_widget.row(item)
-        clipboard_item = self.history[idx]
-
-        if clipboard_item.data_type == "text":
-            self.clipboard.setText(clipboard_item.content)
-        elif clipboard_item.data_type == "image":
-            self.clipboard.setImage(clipboard_item.content)
-
-        self.hide()
-
-    def show_history(self):
-        self.show()
-        self.raise_()
-        self.activateWindow()
-
-def hotkey_thread(manager):
-    def on_activate():
-        QtCore.QMetaObject.invokeMethod(manager, "show_history", QtCore.Qt.QueuedConnection)
-
-    from pynput.keyboard import GlobalHotKeys
-    with GlobalHotKeys({
-        '<alt>+v': on_activate
-    }) as h:
-        h.join()
-
-def main():
-    app = QtWidgets.QApplication(sys.argv)
-    manager = ClipboardManager()
-
-    t = threading.Thread(target=hotkey_thread, args=(manager,), daemon=True)
-    t.start()
-
-    sys.exit(app.exec_())
+        self.list_widget.insertItem(0, list_item)
 
 if __name__ == "__main__":
-    import sys
     app = QtWidgets.QApplication(sys.argv)
-    window = QtWidgets.QMainWindow()
-    window.show()
+    manager = ClipboardManager()
     sys.exit(app.exec_())
-
