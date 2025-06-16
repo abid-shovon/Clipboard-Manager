@@ -15,20 +15,47 @@ class ClipboardManager(QtWidgets.QWidget):
         self.setWindowTitle("Clipboard Manager")
         self.setGeometry(100, 100, 500, 400)
         self.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.Window)
+
         self.clipboard = QtWidgets.QApplication.clipboard()
         self.clipboard.dataChanged.connect(self.on_clipboard_change)
 
         self.history = []
         self.list_widget = QtWidgets.QListWidget()
+
+        # Set larger font
+        font = QtGui.QFont()
+        font.setPointSize(12)
+        self.list_widget.setFont(font)
+
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.list_widget)
         self.setLayout(layout)
 
-        # Keyboard listener
+        # Connect double click on list item to copy function
+        self.list_widget.itemDoubleClicked.connect(self.copy_selected_item)
+
+        # System tray setup
+        self.tray_icon = QtWidgets.QSystemTrayIcon(QtGui.QIcon.fromTheme("edit-paste"), self)
+        self.tray_icon.setToolTip("Clipboard Manager")
+        tray_menu = QtWidgets.QMenu()
+        restore_action = tray_menu.addAction("Show Clipboard Manager")
+        quit_action = tray_menu.addAction("Quit")
+
+        restore_action.triggered.connect(self.show_window)
+        quit_action.triggered.connect(QtWidgets.QApplication.quit)
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.show()
+
+        # Global hotkey listener
         self.listener = keyboard.GlobalHotKeys({
             '<alt>+v': self.show_window
         })
         self.listener.start()
+
+    def closeEvent(self, event):
+        # minimize to tray instead of closing
+        event.ignore()
+        self.hide()
 
     def show_window(self):
         self.show()
@@ -69,15 +96,33 @@ class ClipboardManager(QtWidgets.QWidget):
             display_text = item.content if len(item.content) < 100 else item.content[:100] + "..."
             list_item.setText(display_text)
             list_item.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_FileIcon))
+            list_item.setToolTip(item.content)  # Tooltip with full text
         elif item.data_type == "image":
             pixmap = QtGui.QPixmap.fromImage(item.content)
             pixmap = pixmap.scaled(64, 64, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
             list_item.setIcon(QtGui.QIcon(pixmap))
             list_item.setText("[Image]")
+            list_item.setToolTip("[Image data]")
 
         self.list_widget.insertItem(0, list_item)
+
+    def copy_selected_item(self, item):
+        if item.text() != "[Image]":
+            # Copy full original text from history (not truncated display text)
+            # Find corresponding ClipboardItem from self.history by matching display text start
+            # Safer: match tooltip text instead
+            for clip_item in self.history:
+                if clip_item.data_type == "text":
+                    tooltip_text = clip_item.content
+                    # match tooltip of list item
+                    if tooltip_text.startswith(item.text().rstrip("...")):
+                        self.clipboard.setText(tooltip_text)
+                        break
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     manager = ClipboardManager()
+    manager.show()
     sys.exit(app.exec_())
+
+
