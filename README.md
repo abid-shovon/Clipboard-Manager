@@ -37,7 +37,7 @@ You can quickly open the clipboard history window by pressing **Alt + V**.
 
 1. Clone or download the project:
   
-`git clone <repository-url> cd clipboard_manager` 
+`git clone <https://github.com/abid-shovon/Clipboard-Manager.git> cd clipboard_manager` 
 
 2.  Install dependencies:
 
